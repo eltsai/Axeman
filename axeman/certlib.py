@@ -6,7 +6,7 @@ from collections import OrderedDict
 
 from OpenSSL import crypto
 
-CTL_LISTS = 'https://www.gstatic.com/ct/log_list/log_list.json'
+CTL_LISTS = 'https://www.gstatic.com/ct/log_list/v3/log_list.json'
 
 CTL_INFO = "http://{}/ct/v1/get-sth"
 
@@ -41,21 +41,15 @@ PreCertEntry = Struct(
 async def retrieve_all_ctls(session=None):
     async with session.get(CTL_LISTS) as response:
         ctl_lists = await response.json()
-
-        logs = ctl_lists['logs']
-
-        for log in logs:
-            if log['url'].endswith('/'):
-                log['url'] = log['url'][:-1]
-            owner = _get_owner(log, ctl_lists['operators'])
-            log['operated_by'] = owner
-
+        logs = []
+        for op in ctl_lists['operators']:
+            new_logs = op['logs']
+            for log in new_logs:
+                if log['url'].endswith('/'):
+                        log['url'] = log['url'][:-1]
+                log['operated_by'] = op['name']
+                logs.append(log)  
         return logs
-
-def _get_owner(log, owners):
-    owner_id = log['operated_by'][0]
-    owner = next(x for x in owners if x['id'] == owner_id)
-    return owner['name']
 
 async def get_max_block_size(log, session):
     async with session.get(DOWNLOAD.format(log['url'], 0, 10000)) as response:
@@ -64,7 +58,6 @@ async def get_max_block_size(log, session):
 
 async def retrieve_log_info(log, session):
     block_size = await get_max_block_size(log, session)
-
     async with session.get(CTL_INFO.format(log['url'])) as response:
         info = await response.json()
         info['block_size'] = block_size
